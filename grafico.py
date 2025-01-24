@@ -3,30 +3,42 @@ import matplotlib.pyplot as plt
 import numpy as np
 from io import BytesIO
 import base64
+import os
 from flask import Flask, render_template_string, jsonify
 
 app = Flask(__name__)
 
-# Função para obter os dados do banco de dados
+DATABASE_FILE = os.getenv('DATABASE_FILE')  
+HOST = os.getenv('HOST')  
+PORT = os.getenv('PORT')  
+
+if not DATABASE_FILE:
+    raise ValueError("A variável de ambiente 'DATABASE_FILE' não está definida.")
+if not HOST:
+    raise ValueError("A variável de ambiente 'HOST' não está definida.")
+if not PORT:
+    raise ValueError("A variável de ambiente 'PORT' não está definida.")
+
+
 def get_data_from_db():
-    conn = sqlite3.connect('pontuacoes.db')
+    conn = sqlite3.connect(DATABASE_FILE)
     cursor = conn.cursor()
     
-    cursor.execute("SELECT dynamic, code, score FROM report ORDER BY code")
+    cursor.execute("SELECT dynamic, code, score FROM pontuacoes ORDER BY code")
     rows = cursor.fetchall()
     conn.close()
 
     return rows
 
-# Função para gerar o gráfico
+
 def generate_plot(data):
-    equipes = list(set(row[1] for row in data))  # `code` é a equipe
-    cores = plt.cm.get_cmap('tab20', len(equipes))  # Melhor paleta de cores
+    equipes = list(set(row[1] for row in data))  
+    cores = plt.cm.get_cmap('tab20', len(equipes))  
 
     plt.figure(figsize=(12, 6))
 
     for i, equipe in enumerate(equipes):
-        pontos = [row[2] for row in data if row[1] == equipe]  # `score` é a pontuação
+        pontos = [row[2] for row in data if row[1] == equipe]  
         plt.plot(pontos, label=equipe, color=cores(i), marker='o', markersize=8, linewidth=3)
 
     plt.title('Pontuação das Equipes', fontsize=16, weight='bold')
@@ -37,12 +49,10 @@ def generate_plot(data):
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.tight_layout()
 
-    # Salvando o gráfico em um buffer de memória
     buf = BytesIO()
     plt.savefig(buf, format='png')
     buf.seek(0)
 
-    # Codificando o gráfico em base64 para exibição em HTML
     img_str = base64.b64encode(buf.read()).decode('utf-8')
     buf.close()
     
@@ -50,16 +60,13 @@ def generate_plot(data):
 
 @app.route('/')
 def index():
-    # Obtendo os dados do banco de dados
+
     data = get_data_from_db()
     
-    # Obtendo o título dinâmico (campo `dynamic` para a tabela)
     dynamic_title = data[0][0] if data else "Sem dados disponíveis"
     
-    # Gerando o gráfico com os dados
     img_str = generate_plot(data)
     
-    # HTML com layout melhorado
     html = '''
     <html>
         <head>
@@ -184,21 +191,17 @@ def index():
 
 @app.route('/get_graph_data')
 def get_graph_data():
-    # Obtendo os dados mais recentes do banco de dados
     data = get_data_from_db()
     
-    # Gerando o gráfico e retornando como JSON
     img_str = generate_plot(data)
     return jsonify({'img_str': img_str})
 
 @app.route('/get_table_data')
 def get_table_data():
-    # Obtendo os dados mais recentes do banco de dados
     data = get_data_from_db()
     
-    # Retornando os dados em formato JSON
     table_data = [{'code': row[1], 'score': row[2]} for row in data]
     return jsonify(table_data)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host=HOST, port=int(PORT), debug=True)
